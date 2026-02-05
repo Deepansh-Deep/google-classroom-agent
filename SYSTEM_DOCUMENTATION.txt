@@ -1,0 +1,299 @@
+================================================================================
+GOOGLE CLASSROOM SMART ASSISTANT - SYSTEM DOCUMENTATION
+================================================================================
+
+This document explains what the system does, how it works, and what it doesn't 
+do. Written so a non-technical person can understand the product while a 
+technical interviewer can respect it.
+
+================================================================================
+PART 1: WHAT THIS SYSTEM DOES (SIMPLE LANGUAGE)
+================================================================================
+
+The Google Classroom Smart Assistant is a web application that helps teachers
+and students manage their Google Classroom work more effectively.
+
+FOR TEACHERS:
+- See all your courses and assignments in one dashboard
+- Understand which students are struggling (based on late/missing work)
+- Get answers to questions about course content without searching
+- Export student performance reports as spreadsheets
+
+FOR STUDENTS:
+- See upcoming deadlines with countdown timers
+- Get reminders before assignments are due
+- Ask questions about course materials and get actual answers (not guesses)
+- Understand your own performance with clear, helpful feedback
+
+WHAT PROBLEMS IT SOLVES:
+1. Teachers lose track of at-risk students across multiple courses
+2. Students forget deadlines and miss assignments
+3. Finding information in course materials takes too long
+4. Performance feedback is often jargon-heavy and unhelpful
+
+================================================================================
+PART 2: HOW A TEACHER USES IT
+================================================================================
+
+1. LOGIN
+   - Click "Sign in with Google"
+   - Allow access to classroom data
+   - System syncs courses/assignments automatically
+
+2. DASHBOARD
+   - See course overview cards
+   - View upcoming deadlines
+   - Check student risk indicators (red/yellow/green)
+
+3. ANALYTICS
+   - Select a course
+   - View class performance breakdown
+   - Click individual students for detailed insights
+   - Insights are in plain English, not jargon
+
+4. Q&A
+   - Type a question about course content
+   - Get answer with source citations
+   - Every answer shows where the information came from
+
+5. REPORTS
+   - Select course and date range
+   - Generate performance report
+   - Download as CSV for spreadsheets
+
+================================================================================
+PART 3: HOW A STUDENT USES IT
+================================================================================
+
+1. LOGIN
+   - Same Google login as classroom
+
+2. DASHBOARD
+   - See upcoming assignments with deadlines
+   - Color-coded urgency (red = due soon)
+
+3. MY PERFORMANCE
+   - See overall score (percentage)
+   - Read plain-language explanation
+   - Get specific, actionable recommendations
+   - Example: "Set calendar reminders 2 days before deadlines"
+
+4. Q&A
+   - Ask questions about assignments or announcements
+   - Get answers from actual course content
+   - See confidence score (how sure the system is)
+   - View source excerpts to verify
+
+5. REMINDERS
+   - Configure when to receive reminders (email)
+   - Options: 3 days before, 24 hours before, etc.
+
+================================================================================
+PART 4: HOW DATA MOVES END TO END
+================================================================================
+
+1. AUTHENTICATION
+   User clicks login -> Redirect to Google -> User approves ->
+   Google returns token -> Backend encrypts token -> Stores in database ->
+   Issues JWT for frontend
+
+2. CLASSROOM SYNC
+   Login triggers sync job -> Worker fetches courses from Google API ->
+   Fetches assignments for each course -> Stores in PostgreSQL ->
+   Queues embedding job
+
+3. EMBEDDING GENERATION
+   Worker picks up job -> Loads assignments/announcements ->
+   Chunks text -> Generates vectors (sentence-transformers) ->
+   Stores in ChromaDB
+
+4. Q&A QUERY
+   User types question -> Backend generates question embedding ->
+   Searches ChromaDB for similar content -> Ranks by relevance ->
+   Returns answer with sources and confidence score
+
+5. ANALYTICS CALCULATION
+   User views analytics -> Backend loads submissions for student ->
+   Calculates timeliness, completion, consistency ->
+   Assigns category (good/medium/at_risk) ->
+   Generates plain-language explanation
+
+6. CACHING
+   API requests first check Redis cache ->
+   If cached: return immediately ->
+   If not: fetch from database, cache result
+
+================================================================================
+PART 5: PROJECT STRUCTURE
+================================================================================
+
+google-classroom/
+├── backend/                    # FastAPI Python backend
+│   ├── app/
+│   │   ├── api/v1/            # REST API endpoints
+│   │   │   ├── auth.py        # Login, logout, token refresh
+│   │   │   ├── courses.py     # Course listing and sync
+│   │   │   ├── assignments.py # Assignment management
+│   │   │   ├── qa.py          # Q&A interface
+│   │   │   ├── analytics.py   # Performance analytics
+│   │   │   └── reports.py     # Report generation
+│   │   ├── core/              # Core utilities
+│   │   │   ├── security.py    # OAuth, JWT, encryption
+│   │   │   ├── permissions.py # RBAC access control
+│   │   │   ├── cache.py       # Redis caching
+│   │   │   └── audit.py       # Security logging
+│   │   ├── services/          # Business logic
+│   │   │   ├── rag_service.py # Q&A with source citation
+│   │   │   ├── analytics_service.py  # Performance scoring
+│   │   │   └── embedding_service.py  # Vector generation
+│   │   ├── tasks/             # Background jobs
+│   │   │   ├── sync_tasks.py  # Classroom sync
+│   │   │   ├── embedding_tasks.py
+│   │   │   └── reminder_tasks.py
+│   │   ├── integrations/
+│   │   │   ├── google_classroom.py  # Google API client
+│   │   │   └── vector_store.py      # ChromaDB client
+│   │   ├── models/
+│   │   │   ├── database.py    # SQLAlchemy models
+│   │   │   └── schemas.py     # Pydantic request/response
+│   │   ├── worker.py          # Background worker entry
+│   │   └── main.py            # FastAPI app
+│   ├── requirements.txt
+│   └── Dockerfile
+│
+├── frontend/                   # Next.js React frontend
+│   ├── src/app/
+│   │   ├── dashboard/
+│   │   │   ├── page.tsx       # Main dashboard
+│   │   │   ├── courses/       # Course listing
+│   │   │   ├── assignments/   # Assignment tracking
+│   │   │   ├── qa/            # Q&A chat interface
+│   │   │   ├── analytics/     # Performance charts
+│   │   │   └── reports/       # Report generation
+│   │   ├── login/             # Google OAuth login
+│   │   └── providers.tsx      # Auth context
+│   ├── package.json
+│   └── Dockerfile
+│
+├── docker-compose.yml          # Development orchestration
+├── LIMITATIONS.md              # Known limitations
+└── README.md                   # Quick start guide
+
+================================================================================
+PART 6: WHAT WAS INTENTIONALLY KEPT SIMPLE
+================================================================================
+
+1. NO EXTERNAL AI (ChatGPT, etc.)
+   Why: Prevents hallucination. Answers come ONLY from indexed classroom data.
+   System explicitly says "I don't have information" when unsure.
+
+2. RULE-BASED ANALYTICS (NOT ML)
+   Why: Explainable. Teachers can understand exactly how scores are calculated.
+   No black-box predictions that can't be justified.
+
+3. SINGLE DATABASE (PostgreSQL)
+   Why: Simpler operations. No multi-database consistency issues.
+   Vector store (ChromaDB) is separate but lightweight.
+
+4. BASIC ROLES (Admin, Teacher, Student)
+   Why: Covers 95% of use cases. More complex hierarchies can be added later.
+
+5. EMAIL REMINDERS ONLY
+   Why: Push notifications require mobile apps and additional infrastructure.
+   Email is universal and works everywhere.
+
+6. ENGLISH ONLY
+   Why: Embedding model trained on English. Multi-language needs different model.
+
+================================================================================
+PART 7: WHAT CAN BE SCALED FURTHER
+================================================================================
+
+FRONTEND:
+- Add real-time updates with WebSockets
+- Build native mobile apps (React Native)
+- Add dark/light theme toggle
+- Implement keyboard shortcuts
+
+BACKEND:
+- Switch to Celery for heavier job processing
+- Add read replicas for database
+- Implement API rate limiting per user
+- Add GraphQL endpoint for complex queries
+
+INFRASTRUCTURE:
+- Kubernetes deployment for auto-scaling
+- CDN for frontend assets
+- Managed vector database (Pinecone, Weaviate)
+- Redis cluster for high availability
+
+FEATURES:
+- Canvas/Blackboard LMS integration
+- Calendar sync (Google Calendar, Outlook)
+- PDF/document parsing and indexing
+- Parent/guardian view with limited access
+- Custom grading rubrics
+- Plagiarism detection integration
+
+ANALYTICS:
+- Trend analysis over time
+- Cohort comparison
+- Predictive at-risk detection (with proper ML validation)
+- Custom report templates
+
+================================================================================
+PART 8: SECURITY OVERVIEW
+================================================================================
+
+AUTHENTICATION:
+- Google OAuth 2.0 (industry standard)
+- JWT tokens with 15-minute expiry
+- Refresh tokens for session continuity
+
+TOKEN STORAGE:
+- Google API tokens encrypted with Fernet (AES-256 equivalent)
+- Never logged or exposed in error messages
+
+ACCESS CONTROL:
+- Role-based (Admin, Teacher, Student)
+- Teachers can only see their own courses
+- Students can only see their own submissions
+- Resource-level permission checks
+
+AUDIT LOGGING:
+- Login/logout events
+- Data sync operations
+- Report generation
+- Permission denied attempts
+
+DATA HANDLING:
+- No classroom data sent to external AI services
+- Minimal data retention
+- User can request data deletion (GDPR-ready)
+
+================================================================================
+SUMMARY
+================================================================================
+
+This is a production-ready classroom assistant that:
+
+✓ Syncs with Google Classroom automatically
+✓ Answers questions from actual course content (no guessing)
+✓ Tracks student performance with explainable scores
+✓ Sends deadline reminders
+✓ Generates exportable reports
+
+It does NOT:
+
+✗ Use external AI that might hallucinate
+✗ Predict grades with unvalidated ML
+✗ Support non-Google learning management systems (yet)
+✗ Work offline or on mobile apps
+
+Built with: Python (FastAPI), PostgreSQL, Redis, ChromaDB, Next.js, TypeScript
+
+Designed for: Realistic deployment with honest limitations clearly stated.
+
+================================================================================
+END OF DOCUMENT
+================================================================================
